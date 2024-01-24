@@ -182,6 +182,49 @@ async function run() {
       res.send(result);
     });
 
+    // pagination
+    app.get("/api/allHouses", async (req, res) => {
+      try {
+        let query = {};
+
+        const queryParams = req.query;
+
+        if (queryParams.limit) {
+          const result = await housesCollection
+            .find(query)
+            .skip(parseInt(queryParams.skip))
+            .limit(parseInt(queryParams.limit))
+            .toArray();
+          return res.send(result);
+        }
+
+        const result = await housesCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+        res.send(error);
+      }
+    });
+
+    app.get("/api/houseCount", async (req, res) => {
+      const result = await housesCollection.estimatedDocumentCount();
+      res.send({ count: result });
+    });
+
+    // Define your API endpoint for getting the total count of houses
+    app.get("/api/houseCount", async (req, res) => {
+      const db = client.db(dbName);
+      const collection = db.collection("houses"); // Use your actual collection name
+
+      try {
+        const count = await collection.countDocuments();
+        res.json({ count });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
     // add house post
     app.post("/houses", async (req, res) => {
       try {
@@ -264,9 +307,9 @@ async function run() {
     app.patch("/bookedHouses/:id", verifyToken, async (req, res) => {
       try {
         const filter = { _id: new ObjectId(req.params.id) };
-        console.log('paramsId', req.params.id);
-        const updateHouse = req.body; 
-        console.log('updated body', updateHouse)
+        console.log("paramsId", req.params.id);
+        const updateHouse = req.body;
+        console.log("updated body", updateHouse);
         const houses = {
           $set: {
             isBooked: updateHouse.isBooked,
