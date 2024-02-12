@@ -12,7 +12,12 @@ const port = process.env.PORT || 5000;
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: ["http://localhost:5173", ""],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "https://auth-moha-milon-c8f5f.web.app",
+      "http://house-hunter-mahfuz-99.surge.sh",
+    ],
     credentials: true,
   })
 );
@@ -52,7 +57,7 @@ async function run() {
       const user = req.body;
       // console.log(user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn: "30d",
+        expiresIn: "1000h",
       });
       res
         .cookie("token", token, {
@@ -98,7 +103,7 @@ async function run() {
           { email: email },
           process.env.ACCESS_TOKEN_SECRET,
           {
-            expiresIn: "30d",
+            expiresIn: "1000h",
           }
         );
 
@@ -114,7 +119,11 @@ async function run() {
         // Insert the new user document
         const result = await usersCollection.insertOne(newUser);
         res
-          .cookie("token", token, { httpOnly: true, secure: true })
+          .cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          })
           .send({ token, userData: newUser });
       } catch (error) {
         res.send(error);
@@ -131,45 +140,58 @@ async function run() {
 
     // Login route
     app.post("/login", async (req, res) => {
-      // Validate input data
-      // console.log("loggin route");
       const { email, password } = req.body;
-
-      console.log(email, password);
 
       if (!email || !password) {
         return res.status(400).send({ error: "Please fill in all fields" });
       }
-
       // Find the user by email
       const user = await usersCollection.findOne({ email });
       if (!user) {
         return res.status(401).send({ error: "Invalid email or password" });
       }
-
       // Compare the password
 
       const isPasswordMatch = await bcrypt.compare(password, user.password);
       if (!isPasswordMatch) {
         return res.status(401).send({ error: "Invalid email or password" });
       }
-
       // Create a JWT token
       const token = jwt.sign(
         { email: email },
         process.env.ACCESS_TOKEN_SECRET,
         {
-          expiresIn: "30d",
+          expiresIn: "100h",
         }
       );
-
       // Return the JWT token
-      res.cookie("token", token, { httpOnly: true, secure: true }).send({
-        userData: user,
-        success: true,
-        token: token,
-      });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: true,
+          // secure: process.env.NODE_ENV === "production",
+          sameSite: "None",
+          // sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({
+          userData: user,
+          success: true,
+          // token: token,
+        });
     });
+    // Logout
+    app.delete("/logout", async (req, res) => {
+      res
+        .clearCookie("token", {
+          httpOnly: true,
+          secure: true,
+          // secure: process.env.NODE_ENV === "production",
+          sameSite: "None",
+          // sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send("Logged out successfully");
+    });
+
     // add house get all
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -198,6 +220,31 @@ async function run() {
           return res.send(result);
         }
 
+        if (queryParams.city) {
+          query.city = new RegExp(queryParams.city, "i");
+        }
+
+        if (queryParams.bedrooms) {
+          // query.bedrooms = { $lte: queryParams.bedrooms };
+          query.bedrooms = parseInt(queryParams.bedrooms);
+        }
+
+        if (queryParams.bathrooms) {
+          query.bathrooms = parseInt(queryParams.bathrooms);
+        }
+
+        if (queryParams.roomSize) {
+          query.room_size = parseInt(queryParams.roomSize);
+        }
+
+        if (queryParams.minPrice && queryParams.maxPrice) {
+          query.rent_per_month = {
+            $lte: parseInt(queryParams.maxPrice),
+            $gte: parseInt(queryParams.minPrice),
+          };
+        }
+
+        console.log(query);
         const result = await housesCollection.find(query).toArray();
         res.send(result);
       } catch (error) {
@@ -257,7 +304,7 @@ async function run() {
       }
     });
     // update house
-    app.patch("/houses/:id", verifyToken, async (req, res) => {
+    app.patch("/houses/:id", async (req, res) => {
       try {
         const filter = { _id: new ObjectId(req.params.id) };
         const updatesHouse = req.body;
@@ -285,11 +332,11 @@ async function run() {
         res.send(error);
       }
     });
-    app.patch("/bookHouses/:id", verifyToken, async (req, res) => {
+    app.patch("/bookHouses/:id", async (req, res) => {
       try {
         const filter = { _id: new ObjectId(req.params.id) };
-        console.log(filter);
         const updatesHouse = req.body;
+        console.log(filter, updatesHouse);
         const product = {
           $set: {
             isBooked: updatesHouse.isBooked,
@@ -304,7 +351,7 @@ async function run() {
         res.send(error);
       }
     });
-    app.patch("/bookedHouses/:id", verifyToken, async (req, res) => {
+    app.patch("/bookedHouses/:id", async (req, res) => {
       try {
         const filter = { _id: new ObjectId(req.params.id) };
         console.log("paramsId", req.params.id);
@@ -322,7 +369,7 @@ async function run() {
       }
     });
     // Deleting House data
-    app.delete("/houses/:id", verifyToken, async (req, res) => {
+    app.delete("/houses/:id", async (req, res) => {
       try {
         const query = { _id: new ObjectId(req.params.id) };
         const result = await housesCollection.deleteOne(query);
@@ -343,7 +390,7 @@ async function run() {
       }
     });
     // add house get all
-    app.get("/bookedHousesList", verifyToken, async (req, res) => {
+    app.get("/bookedHousesList", async (req, res) => {
       try {
         const result = await bookedHousesListCollection.find().toArray();
         res.send(result);
@@ -352,7 +399,7 @@ async function run() {
       }
     });
     // add house get specific id
-    app.get("/bookedHousesList/:id", verifyToken, async (req, res) => {
+    app.get("/bookedHousesList/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const result = await bookedHousesListCollection.findOne({
@@ -364,7 +411,7 @@ async function run() {
       }
     });
     // Deleting House data
-    app.delete("/bookedHousesList/:id", verifyToken, async (req, res) => {
+    app.delete("/bookedHousesList/:id", async (req, res) => {
       try {
         const query = { _id: new ObjectId(req.params.id) };
         const result = await bookedHousesListCollection.deleteOne(query);
@@ -375,7 +422,7 @@ async function run() {
     });
 
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping tDo confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
