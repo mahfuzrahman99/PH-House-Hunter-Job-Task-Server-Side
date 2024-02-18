@@ -16,7 +16,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:5174",
       "https://auth-moha-milon-c8f5f.web.app",
-      "http://house-hunter-mahfuz-99.surge.sh",
+      "https://house-hunter-mahfuz-99.surge.sh"
     ],
     credentials: true,
   })
